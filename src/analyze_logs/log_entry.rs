@@ -1,5 +1,8 @@
 use crate::analyze_logs::parse_errors::ParseError;
 
+/// Represents a single parsed and validated Nginx log entry.
+///
+/// Contains structured fields extracted from a raw Combined Log Format line.
 #[derive(Debug)]
 pub struct LogEntry {
     log: String,
@@ -11,37 +14,70 @@ pub struct LogEntry {
 }
 
 impl LogEntry {
+    /// Returns a reference to the client's IP address.
     pub fn ip(&self) -> &String {
         &self.ip
     }
 
+    /// Returns the HTTP status code of the response.
     pub fn status(&self) -> u16 {
         self.status
     }
 
+    /// Returns a reference to the HTTP method used (e.g., "GET").
     pub fn method(&self) -> &String {
         &self.method
     }
 
+    /// Returns a reference to the requested URL path.
     pub fn path(&self) -> &String {
         &self.path
     }
 
+    /// Returns a reference to the original, raw log line string.
     pub fn log(&self) -> &String {
         &self.log
     }
 }
 
 impl LogEntry {
+    /// Formats and prints the log entry to the standard output using ANSI colors.
     pub fn output(&self) {
-        println!("[-LOG ENTRY-]");
-        println!("-> log: {}", self.log);
-        println!("-> ip: {}", self.ip);
-        println!("-> method: {}", self.method);
-        println!("-> path: {}", self.path);
-        println!("-> date: {}", self.date);
-        println!("-> status: {}", self.status);
+        use colored::*;
+
+        let status_colored = if self.status >= 500 {
+            self.status.to_string().red().bold()
+        } else if self.status >= 400 {
+            self.status.to_string().yellow().bold()
+        } else if self.status >= 300 {
+            self.status.to_string().cyan()
+        } else {
+            self.status.to_string().green().bold()
+        };
+
+        let method_colored = match self.method.as_str() {
+            "GET" => self.method.green(),
+            "POST" => self.method.blue().bold(),
+            "PUT" | "PATCH" => self.method.yellow(),
+            "DELETE" => self.method.red().bold(),
+            _ => self.method.normal(),
+        };
+
+        println!(
+            "[{}] {} -> {} {} [{}]",
+            self.date.white().dimmed(),
+            self.ip.bright_cyan(),
+            method_colored,
+            self.path.bright_white(),
+            status_colored
+        );
     }
+
+    /// Parses a raw Nginx log line into a structured [`LogEntry`].
+    ///
+    /// # Errors
+    /// Returns [`ParseError`] if the format is corrupted, the IP is invalid,
+    /// or the HTTP method is unsupported.
     pub fn parse(line: &str) -> Result<Self, ParseError> {
         let parts: Vec<&str> = line.split_whitespace().collect();
 
@@ -79,6 +115,7 @@ impl LogEntry {
 }
 
 impl LogEntry {
+    /// Validates an IPv4 address string by checking its octets.
     fn validate_ip(ip: &str) -> Result<String, ParseError> {
         let ip_parts: Vec<&str> = ip.split(".").collect();
         if ip_parts.len() < 4 {
@@ -97,12 +134,14 @@ impl LogEntry {
         Ok(ip.to_string())
     }
 
+    /// Validates and parses the HTTP status code.
     fn validate_status_code(status_code: &str) -> Result<u16, ParseError> {
         status_code.parse().map_err(|_| {
             ParseError::InvalidStatusCode(format!("Invalid status code: {}", status_code))
         })
     }
 
+    /// Validates if the given HTTP method is standard and supported.
     fn validate_method(method: &str) -> Result<String, ParseError> {
         let methods = ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"];
 
